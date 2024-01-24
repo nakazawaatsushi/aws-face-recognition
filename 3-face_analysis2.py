@@ -245,7 +245,7 @@ def main():
     # output facial output files
     nfound = 0
     with open(sys.argv[1] + '.tsv', 'w') as f:
-        f.write('Frame\tFaceID\tsuccess\tface_Tx\tface_Ty\tyaw\troll\tpitch\n')
+        f.write('Frame\tFaceID\tsuccess\tface_Tx\tface_Ty\tface_Tz\tyaw\troll\tpitch\n')
         
         for k in facedata.keys():
             for nf,fd in enumerate(facedata[k]):

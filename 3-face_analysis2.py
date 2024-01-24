@@ -3,6 +3,8 @@ import cv2
 import sys
 import numpy as np
 import csv
+import pickle
+import matplotlib.pyplot as plt
 
 # reconstruct rotation matrix from AMAZON Rekognition json file
 def rotMatrix(roll,pitch,yaw):
@@ -26,11 +28,7 @@ def rotMatrix(roll,pitch,yaw):
 # obtain 3D facial position (rotation matrix) from facial parts and camera params
 def estimate3Dface(nose,eyeLeft,eyeRight,mouthLeft,mouthRight,camInt,camDist):
 	imgPts = np.array([eyeLeft, eyeRight, mouthLeft, mouthRight],dtype='float')
-	globalPts = np.array(\
-					[(-61/2,75,0),\
-					(61/2,75,0), \
-					(-47/2,0,0),\
-						(47/2,0,0)],dtype='float')			
+	globalPts = np.array([(-61/2,75,0), (61/2,75,0), (-47/2,0,0), (47/2,0,0)],dtype='float')			
 	(success, rot_vec, trans_vec) = cv2.solvePnP(globalPts, imgPts, camInt, camDist, flags=cv2.SOLVEPNP_ITERATIVE)
 	
 	return rot_vec, trans_vec
@@ -68,28 +66,33 @@ def findFaceFrame(jsonData, ti, timewindow):
 
     return faces
  
+def getViewAngle(cam_mat, cam_dist, width, height):
+    # this is rough estimate
+    return np.arctan2(cam_mat[0][2],cam_mat[0][0]), np.arctan2(cam_mat[1][2],cam_mat[1][1])
+ 
 def get_cmap():
     cmap = plt.get_cmap("Paired")
     CMAP = []
     for i in range(100):
         CMAP.append([int(cmap(i)[2]*255),int(cmap(i)[1]*255),int(cmap(i)[0]*255)])
     return CMAP 
- 
- 
+
+#
+#  main start from here
+#
 def main():
-    #
-    #  main start from here
-    #
+
     if len(sys.argv) < 3:
-        print('usage: %s [file header] [camera parameter header]\n'%(sys.argv[0]))
+        print('usage: %s [file header] [camera_parameter_file(.pkl)]\n'%(sys.argv[0]))
         sys.exit(1)
 
     f = open(sys.argv[1]+'.json', 'r')
     jsonData = json.load(f)
     f.close()
 
-    camInt  = np.loadtxt("%s-int.csv"%(sys.argv[2]),delimiter=",")
-    camDist = np.loadtxt("%s-dist.csv"%(sys.argv[2]),delimiter=",")
+    # open camera parameters
+    with open(sys.argv[2],'rb') as f:
+        [ret, cam_mtx, cam_dist, rvecs, tvecs] = pickle.load(f)
 
     # capture from video
     cap = cv2.VideoCapture(sys.argv[1]+'.mp4')
@@ -97,9 +100,13 @@ def main():
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    view_ang = getViewAngle(cam_mtx,cam_dist,width,height)
+    print('vx: ', 2*view_ang[0] * 180 / np.pi)
+    print('vy: ', 2*view_ang[1] * 180 / np.pi)
+
     # video output
     fourcc = cv2.VideoWriter_fourcc('m','p','4','v')
-    vout = cv2.VideoWriter(sys.argv[1]+'-result.mp4',fourcc, fps, (width,height))
+    vout = cv2.VideoWriter(sys.argv[1]+'-result.mp4',fourcc, fps, (int((width+height)/2),int(height/2)))
 
     fps = float(jsonData['VideoMetadata']['FrameRate'])
 
@@ -107,12 +114,10 @@ def main():
     nfound = 0
     facedata = {}
 
-    timewindow = 50          # time window (amazon rekognition does not work for every frame)
-
-    COLS = [(0,255,0),(0,0,255), (255,0,0), (255,255,0), (0,255,255),(255,255,255),(255,0,255),
-            (0,255,0),(0,0,255), (255,0,0), (255,255,0), (0,255,255),(255,255,255),(255,0,255),
-            (0,255,0),(0,0,255), (255,0,0), (255,255,0), (0,255,255),(255,255,255),(255,0,255)]
-
+    #timewindow = 50          # time window (amazon rekognition does not work for every frame)
+    timewindow = 300          # time window (amazon rekognition does not work for every frame)
+    COLS = get_cmap()
+    
     while(True):
         ret, frame = cap.read()
         
@@ -126,7 +131,10 @@ def main():
         
         faces = findFaceFrame(jsonData, ti, timewindow)
         n += 1
-            
+
+        # map image
+        mimage = np.zeros((height,height,3),dtype='uint8')
+    
         for nf,face in enumerate(faces):
             if nf >= len(COLS):
                 continue
@@ -171,39 +179,73 @@ def main():
             R = rotMatrix(roll,pitch,yaw)
             
             # draw facial coordinate
-            X = np.array([100,0,0])
-            Y = np.array([0,100,0])
-            Z = np.array([0,0,100])
+            X = np.array([200,0,0])
+            Y = np.array([0,200,0])
+            Z = np.array([0,0,200])
             X = np.dot(R,X.T)
             Y = np.dot(R,Y.T)
             Z = np.dot(R,Z.T)
             
-            cv2.line(frame,fcenter,(fcenter[0]+int(X[0]),fcenter[1]+int(X[1])),(255,0,0),3)
-            cv2.line(frame,fcenter,(fcenter[0]+int(Y[0]),fcenter[1]+int(Y[1])),(0,255,0),3)
-            cv2.line(frame,fcenter,(fcenter[0]+int(Z[0]),fcenter[1]+int(Z[1])),(0,0,255),3)
+            cv2.line(frame,fcenter,(fcenter[0]+int(Z[0]),fcenter[1]+int(Z[1])),COLS[nf],3)
                     
+            # estimate 3D position of the face
+            face_rot, face_trans = estimate3Dface( nose, eyeLeft, eyeRight, mouthLeft, mouthRight,
+                                                    cam_mtx,cam_dist)
+            #
+            # MAP: draw distance cirfle
+            #
+            s = 0.3
+            wx = mimage.shape[1]    # image size of map
+            wy = mimage.shape[0]
+            for r in range(0, 5000, 500):
+                cv2.circle(mimage, (int(wx*0.5),wy), int(r*s), (100,100,100), 1,cv2.LINE_4)
+            # draw viewing angles in map
+            cv2.line(mimage,(int(wx*0.5),wy),
+                (int(wx*0.5 + np.cos(0.5*np.pi - view_ang[0])*5000), int(wy - np.sin(0.5*np.pi - view_ang[0])*5000)),
+                (100,100,100), 2)
+            cv2.line(mimage,(int(wx*0.5),wy),
+                (int(wx*0.5 - np.cos(0.5*np.pi - view_ang[0])*5000), int(wy - np.sin(0.5*np.pi - view_ang[0])*5000)),
+                (100,100,100), 2)                
+            # draw facial markers
+            x = int(wx/2 + s*face_trans[0])
+            z = int(wy - s*face_trans[2])
+            vx = int(Z[0])
+            vz = int(Z[2])
+            cv2.circle(mimage, (x,z), 15, COLS[nf], 3, cv2.LINE_4)
+            cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
+                   
             font = cv2.FONT_HERSHEY_PLAIN
-            cv2.putText(frame, \
-                'Frame %d: Roll,Pitch,Yaw = %f,%f,%f'%(n,roll*180/np.pi,pitch*180/np.pi,yaw*180/np.pi), \
-                (12,20), font, 1, (255,255,255), 2)
+            #cv2.putText(frame, \
+            #    'Frame %d: Facepos: %4.2f  %4.2f  FaceDirec: %3.2f'%(n,eyePos_w[0],eyePos_w[1],180*yaw_w/np.pi), \
+            #    (12,30*(nf+1)), font, 2, COLS[nf], 2)
+ 
+        outframe = cv2.resize(np.hstack([frame,mimage]), dsize=None, fx=0.5, fy=0.5)
+ 
+        vout.write(outframe)
+        #cv2.imshow("monitor", np.hstack([frame,mimage]))
+        cv2.imshow("monitor", outframe)
         
-        vout.write(frame)
-        cv2.imshow("monitor",frame)
-        cv2.waitKey(0)
+        k = cv2.waitKey(5)
+        if k == 32:         # space key
+            print('pause')
+            cv2.waitKey(0)
+        elif k == 27:       # esc key
+            break
 
-    with open(sys.argv[1] + '-all.csv', 'w') as f:
-        f.write('Frame,success,pose_Tx,pose_Ty,pose_Tz,pose_Rx,pose_Ry,pose_Rz\n')
-        
-        for k in facedata.keys():
-            if facedata[k]['success'] == 0:
-                f.write('%s,%d\n'%(k,facedata[k]['success']))
-            else:
-                f.write('%s,%d,%f,%f,%f,%f,%f,%f\n'%(k,facedata[k]['success'], \
-                                facedata[k]['pose_Tx'],facedata[k]['pose_Ty'],facedata[k]['pose_Tz'], \
-                                facedata[k]['pose_Rx'],facedata[k]['pose_Ry'],facedata[k]['pose_Rz']))
-        
-        f.write('#Face is found %d frames / %d frames.'%(nfound,n))
-
+    #with open(sys.argv[1] + '-all.csv', 'w') as f:
+    #    f.write('Frame,success,pose_Tx,pose_Ty,pose_Tz,pose_Rx,pose_Ry,pose_Rz\n')
+    #    
+    #    for k in facedata.keys():
+    #        if facedata[k]['success'] == 0:
+    #            f.write('%s,%d\n'%(k,facedata[k]['success']))
+    #        else:
+    #            f.write('%s,%d,%f,%f,%f,%f,%f,%f\n'%(k,facedata[k]['success'], \
+    #                            facedata[k]['pose_Tx'],facedata[k]['pose_Ty'],facedata[k]['pose_Tz'], \
+    #                            facedata[k]['pose_Rx'],facedata[k]['pose_Ry'],facedata[k]['pose_Rz']))
+    #    
+    #    f.write('#Face is found %d frames / %d frames.'%(nfound,n))
+    
+    """
     # for web visualization
     NSMPL = 200
     STEP = (len(facedata)+1)/NSMPL
@@ -239,8 +281,9 @@ def main():
                     f.write('0.0\n')
                 else:
                     f.write('%f\n'%(facedata[k]['pose_Rz']))
-        
-    print('Face is found %d frames / %d frames.'%(nfound,n))    
+    """
+    
+    #print('Face is found %d frames / %d frames.'%(nfound,n))    
 
     cap.release()
     vout.release()

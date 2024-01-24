@@ -81,7 +81,6 @@ def get_cmap():
 #  main start from here
 #
 def main():
-
     if len(sys.argv) < 3:
         print('usage: %s [file header] [camera_parameter_file(.pkl)]\n'%(sys.argv[0]))
         sys.exit(1)
@@ -120,7 +119,6 @@ def main():
     
     while(True):
         ret, frame = cap.read()
-        
         if frame is None:
             break
         
@@ -135,6 +133,9 @@ def main():
         # map image
         mimage = np.zeros((height,height,3),dtype='uint8')
     
+        # prepare facedata list
+        facedata[str(n)] = []
+
         for nf,face in enumerate(faces):
             if nf >= len(COLS):
                 continue
@@ -174,8 +175,7 @@ def main():
             
             yaw = yaw*np.pi / 180.0
             roll = roll*np.pi / 180.0
-            pitch = pitch*np.pi / 180.0
-            
+            pitch = pitch*np.pi / 180.0     
             R = rotMatrix(roll,pitch,yaw)
             
             # draw facial coordinate
@@ -215,10 +215,19 @@ def main():
             cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
                    
             font = cv2.FONT_HERSHEY_PLAIN
-            #cv2.putText(frame, \
-            #    'Frame %d: Facepos: %4.2f  %4.2f  FaceDirec: %3.2f'%(n,eyePos_w[0],eyePos_w[1],180*yaw_w/np.pi), \
-            #    (12,30*(nf+1)), font, 2, COLS[nf], 2)
- 
+            cv2.putText(frame, \
+                'Frame %d: Facepos: %4.2f  %4.2f %4.2f'%(n,face_trans[0],face_trans[1],face_trans[2]), \
+                (12,30*(nf+1)), font, 2, COLS[nf], 2)
+            f = {}
+            f['success'] = 1
+            f['face_Tx'] = face_trans[0]
+            f['face_Ty'] = face_trans[1]
+            f['face_Tz'] = face_trans[2]
+            f['yaw'] = yaw
+            f['roll'] = roll
+            f['pitch'] = pitch
+            facedata[str(n)].append(f)      
+
         outframe = cv2.resize(np.hstack([frame,mimage]), dsize=None, fx=0.5, fy=0.5)
  
         vout.write(outframe)
@@ -232,18 +241,18 @@ def main():
         elif k == 27:       # esc key
             break
 
-    #with open(sys.argv[1] + '-all.csv', 'w') as f:
-    #    f.write('Frame,success,pose_Tx,pose_Ty,pose_Tz,pose_Rx,pose_Ry,pose_Rz\n')
-    #    
-    #    for k in facedata.keys():
-    #        if facedata[k]['success'] == 0:
-    #            f.write('%s,%d\n'%(k,facedata[k]['success']))
-    #        else:
-    #            f.write('%s,%d,%f,%f,%f,%f,%f,%f\n'%(k,facedata[k]['success'], \
-    #                            facedata[k]['pose_Tx'],facedata[k]['pose_Ty'],facedata[k]['pose_Tz'], \
-    #                            facedata[k]['pose_Rx'],facedata[k]['pose_Ry'],facedata[k]['pose_Rz']))
-    #    
-    #    f.write('#Face is found %d frames / %d frames.'%(nfound,n))
+    # output facial output files
+    nfound = 0
+    with open(sys.argv[1] + '.tsv', 'w') as f:
+        f.write('Frame\tFaceID\tsuccess\tface_Tx\tface_Ty\tyaw\troll\tpitch\n')
+        
+        for k in facedata.keys():
+            for nf,fd in enumerate(facedata[k]):
+                f.write('%s\t%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\n'%(k, nf, fd['success'], \
+                                fd['face_Tx'],fd['face_Ty'],fd['face_Tz'], \
+                                fd['yaw'],fd['roll'],fd['pitch']))
+            nfound += 1
+        #f.write('#Face is found %d frames / %d frames.'%(nfound,n))
     
     """
     # for web visualization

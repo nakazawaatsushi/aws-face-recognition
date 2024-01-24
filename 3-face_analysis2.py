@@ -131,7 +131,19 @@ def main():
         n += 1
 
         # map image
+        s = 0.3        
         mimage = np.zeros((height,height,3),dtype='uint8')
+        wx = mimage.shape[1]    # image size of map
+        wy = mimage.shape[0]
+        for r in range(0, 5000, 500):
+            cv2.circle(mimage, (int(wx*0.5),wy), int(r*s), (100,100,100), 1,cv2.LINE_4)  
+       # draw viewing angles in map
+        cv2.line(mimage,(int(wx*0.5),wy),
+            (int(wx*0.5 + np.cos(0.5*np.pi - view_ang[0])*5000), int(wy - np.sin(0.5*np.pi - view_ang[0])*5000)),
+            (100,100,100), 2)
+        cv2.line(mimage,(int(wx*0.5),wy),
+            (int(wx*0.5 - np.cos(0.5*np.pi - view_ang[0])*5000), int(wy - np.sin(0.5*np.pi - view_ang[0])*5000)),
+            (100,100,100), 2)               
     
         # prepare facedata list
         facedata[str(n)] = []
@@ -194,18 +206,7 @@ def main():
             #
             # MAP: draw distance cirfle
             #
-            s = 0.3
-            wx = mimage.shape[1]    # image size of map
-            wy = mimage.shape[0]
-            for r in range(0, 5000, 500):
-                cv2.circle(mimage, (int(wx*0.5),wy), int(r*s), (100,100,100), 1,cv2.LINE_4)
-            # draw viewing angles in map
-            cv2.line(mimage,(int(wx*0.5),wy),
-                (int(wx*0.5 + np.cos(0.5*np.pi - view_ang[0])*5000), int(wy - np.sin(0.5*np.pi - view_ang[0])*5000)),
-                (100,100,100), 2)
-            cv2.line(mimage,(int(wx*0.5),wy),
-                (int(wx*0.5 - np.cos(0.5*np.pi - view_ang[0])*5000), int(wy - np.sin(0.5*np.pi - view_ang[0])*5000)),
-                (100,100,100), 2)                
+              
             # draw facial markers
             x = int(wx/2 + s*face_trans[0])
             z = int(wy - s*face_trans[2])

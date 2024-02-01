@@ -25,6 +25,21 @@ def rotMatrix(roll,pitch,yaw):
 
 	return R
 
+# reconstruct rotation matrix from AMAZON Rekognition json file
+def rot_y(theta):
+	R = np.zeros((3,3),dtype='float')
+	R[0,0] = np.cos(theta)
+	R[1,0] = 0
+	R[2,0] = -np.sin(theta)
+	R[0,1] = 0
+	R[1,1] = 1
+	R[2,1] = 0
+	R[0,2] = np.sin(theta)
+	R[1,2] = 0
+	R[2,2] = np.cos(theta)
+
+	return R
+
 # obtain 3D facial position (rotation matrix) from facial parts and camera params
 def estimate3Dface(nose,eyeLeft,eyeRight,mouthLeft,mouthRight,camInt,camDist):
 	imgPts = np.array([eyeLeft, eyeRight, mouthLeft, mouthRight],dtype='float')
@@ -71,7 +86,7 @@ def getViewAngle(cam_mat, cam_dist, width, height):
     return np.arctan2(cam_mat[0][2],cam_mat[0][0]), np.arctan2(cam_mat[1][2],cam_mat[1][1])
  
 def get_cmap():
-    cmap = plt.get_cmap("Paired")
+    cmap = plt.get_cmap("tab20")
     CMAP = []
     for i in range(100):
         CMAP.append([int(cmap(i)[2]*255),int(cmap(i)[1]*255),int(cmap(i)[0]*255)])
@@ -131,11 +146,11 @@ def main():
         n += 1
 
         # map image
-        s = 0.3        
+        s = 0.1        
         mimage = np.zeros((height,height,3),dtype='uint8')
         wx = mimage.shape[1]    # image size of map
         wy = mimage.shape[0]
-        for r in range(0, 5000, 500):
+        for r in range(0, 10000, 500):
             cv2.circle(mimage, (int(wx*0.5),wy), int(r*s), (100,100,100), 1,cv2.LINE_4)  
        # draw viewing angles in map
         cv2.line(mimage,(int(wx*0.5),wy),
@@ -165,7 +180,7 @@ def main():
             # draw facial parts
             for lms in face['Landmarks']:
                 le = (int(lms['X']*w),int(lms['Y']*h))
-                cv2.circle(frame, le, 5, (0,255,255), thickness=3, lineType=cv2.LINE_AA)
+                #cv2.circle(frame, le, 5, (0,255,255), thickness=3, lineType=cv2.LINE_AA)
                 if lms['Type'] == 'nose':
                     nose = np.array(le)
                 if lms['Type'] == 'eyeRight':
@@ -201,20 +216,29 @@ def main():
             cv2.line(frame,fcenter,(fcenter[0]+int(Z[0]),fcenter[1]+int(Z[1])),COLS[nf],3)
                     
             # estimate 3D position of the face
-            face_rot, face_trans = estimate3Dface( nose, eyeLeft, eyeRight, mouthLeft, mouthRight,
-                                                    cam_mtx,cam_dist)
-            #
-            # MAP: draw distance cirfle
-            #
-              
+            face_rot, face_trans = estimate3Dface( nose, eyeLeft, eyeRight, mouthLeft, mouthRight, cam_mtx,cam_dist)
+            
             # draw facial markers
             x = int(wx/2 + s*face_trans[0])
             z = int(wy - s*face_trans[2])
-            vx = int(Z[0])
-            vz = int(Z[2])
+            
+            #
+            # adjust facial direction considering camera rotation
+            #
+            theta = np.pi/2 - np.arctan2(face_trans[2],face_trans[0])
+            R = rot_y(-theta)
+            # print(R)
+            ZZ = np.dot(R,Z.T)
+            #vx = int(Z[0])
+            #vz = int(Z[2])
             cv2.circle(mimage, (x,z), 15, COLS[nf], 3, cv2.LINE_4)
+            # draw non-adjusted facial direction (assuming orthogonal)
+            #cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
+            vx = int(ZZ[0])
+            vz = int(ZZ[2])
+            # draw adjusted facial direction
             cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
-                   
+            
             font = cv2.FONT_HERSHEY_PLAIN
             cv2.putText(frame, \
                 'Frame %d: Facepos: %4.2f  %4.2f %4.2f'%(n,face_trans[0],face_trans[1],face_trans[2]), \
@@ -227,6 +251,9 @@ def main():
             f['yaw'] = yaw
             f['roll'] = roll
             f['pitch'] = pitch
+            f['ZZ_X'] = ZZ[0]
+            f['ZZ_Y'] = ZZ[1]
+            f['ZZ_Z'] = ZZ[2]
             facedata[str(n)].append(f)      
 
         outframe = cv2.resize(np.hstack([frame,mimage]), dsize=None, fx=0.5, fy=0.5)
@@ -245,13 +272,13 @@ def main():
     # output facial output files
     nfound = 0
     with open(sys.argv[1] + '.tsv', 'w') as f:
-        f.write('Frame\tFaceID\tsuccess\tface_Tx\tface_Ty\tface_Tz\tyaw\troll\tpitch\n')
+        f.write('Frame\tFaceID\tsuccess\tface_Tx\tface_Ty\tface_Tz\tyaw\troll\tpitch\tz_adj_x\tz_adj_y\tz_adj_z\n')
         
         for k in facedata.keys():
             for nf,fd in enumerate(facedata[k]):
-                f.write('%s\t%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\n'%(k, nf, fd['success'], \
+                f.write('%s\t%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n'%(k, nf, fd['success'], \
                                 fd['face_Tx'],fd['face_Ty'],fd['face_Tz'], \
-                                fd['yaw'],fd['roll'],fd['pitch']))
+                                fd['yaw'],fd['roll'],fd['pitch'],fd['ZZ_X'],fd['ZZ_Y'],fd['ZZ_Z']))
             nfound += 1
         #f.write('#Face is found %d frames / %d frames.'%(nfound,n))
     

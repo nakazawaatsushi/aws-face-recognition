@@ -88,7 +88,7 @@ def getViewAngle(cam_mat, cam_dist, width, height):
 def get_cmap():
     cmap = plt.get_cmap("tab20")
     CMAP = []
-    for i in range(100):
+    for i in range(200):
         CMAP.append([int(cmap(i)[2]*255),int(cmap(i)[1]*255),int(cmap(i)[0]*255)])
     return CMAP 
 
@@ -231,14 +231,21 @@ def main():
             ZZ = np.dot(R,Z.T)
             #vx = int(Z[0])
             #vz = int(Z[2])
-            cv2.circle(mimage, (x,z), 15, COLS[nf], 3, cv2.LINE_4)
+            try:
+                cv2.circle(mimage, (x,z), 15, COLS[nf], 3, cv2.LINE_4)
+            except:
+                print('overflow error')
+                
             # draw non-adjusted facial direction (assuming orthogonal)
             #cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
             vx = int(ZZ[0])
             vz = int(ZZ[2])
             # draw adjusted facial direction
-            cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
-            
+            try:            
+                cv2.line(mimage, (x,z), (x+vx, z+vz), (255,255,255), 2)
+            except:
+                print('overflow error')
+                
             font = cv2.FONT_HERSHEY_PLAIN
             cv2.putText(frame, \
                 'Frame %d: Facepos: %4.2f  %4.2f %4.2f'%(n,face_trans[0],face_trans[1],face_trans[2]), \

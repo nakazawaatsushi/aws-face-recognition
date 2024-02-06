@@ -225,9 +225,6 @@ while(True):
         Y = np.dot(R,Y.T)
         Z = np.dot(R,Z.T)
         
-        #cv2.line(frame,fcenter,(fcenter[0]+int(X[0]),fcenter[1]+int(X[1])),(255,0,0),3)
-        #cv2.line(frame,fcenter,(fcenter[0]+int(Y[0]),fcenter[1]+int(Y[1])),(0,255,0),3)
-        #cv2.line(frame,fcenter,(fcenter[0]+int(Z[0]),fcenter[1]+int(Z[1])),(0,0,255),3)
         cv2.line(frame,fcenter,(fcenter[0]+int(Z[0]),fcenter[1]+int(Z[1])),COLS[nf],3)
 
         thetaDist = np.zeros(5)

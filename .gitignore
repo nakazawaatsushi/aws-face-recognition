@@ -4,3 +4,4 @@ ivr/
 *.bak
 *.json
 *.tsv
+.*

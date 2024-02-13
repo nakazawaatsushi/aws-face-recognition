@@ -4,4 +4,6 @@ ivr/
 *.bak
 *.json
 *.tsv
-.*
+*.xls
+*.xlsx
+.ipynb_checkpoints/

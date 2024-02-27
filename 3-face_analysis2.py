@@ -96,9 +96,16 @@ def get_cmap():
 #  main start from here
 #
 def main():
+
     if len(sys.argv) < 3:
         print('usage: %s [file header] [camera_parameter_file(.pkl)]\n'%(sys.argv[0]))
         sys.exit(1)
+
+    # output options
+    opt = {}
+    opt['output_text'] = False
+    opt['facial_marker'] = True
+    opt['file_footer'] = '-result3'
 
     f = open(sys.argv[1]+'.json', 'r')
     jsonData = json.load(f)
@@ -120,7 +127,7 @@ def main():
 
     # video output
     fourcc = cv2.VideoWriter_fourcc('m','p','4','v')
-    vout = cv2.VideoWriter(sys.argv[1]+'-result.mp4',fourcc, fps, (int((width+height)/2),int(height/2)))
+    vout = cv2.VideoWriter(sys.argv[1] + opt['file_footer'] +'.mp4',fourcc, fps, (int((width+height)/2),int(height/2)))
 
     fps = float(jsonData['VideoMetadata']['FrameRate'])
 
@@ -180,7 +187,10 @@ def main():
             # draw facial parts
             for lms in face['Landmarks']:
                 le = (int(lms['X']*w),int(lms['Y']*h))
-                #cv2.circle(frame, le, 5, (0,255,255), thickness=3, lineType=cv2.LINE_AA)
+                
+                if opt['facial_marker'] == True:
+                    cv2.circle(frame, le, 5, (0,255,255), thickness=3, lineType=cv2.LINE_AA)
+                
                 if lms['Type'] == 'nose':
                     nose = np.array(le)
                 if lms['Type'] == 'eyeRight':
@@ -246,10 +256,12 @@ def main():
             except:
                 print('overflow error')
                 
-            font = cv2.FONT_HERSHEY_PLAIN
-            cv2.putText(frame, \
-                'Frame %d: Facepos: %4.2f  %4.2f %4.2f'%(n,face_trans[0],face_trans[1],face_trans[2]), \
-                (12,30*(nf+1)), font, 2, COLS[nf], 2)
+            if opt['output_text'] == True:
+                font = cv2.FONT_HERSHEY_PLAIN
+                cv2.putText(frame, \
+                    'Frame %d: Facepos: %4.2f  %4.2f %4.2f'%(n,face_trans[0],face_trans[1],face_trans[2]), \
+                    (12,30*(nf+1)), font, 2, COLS[nf], 2)
+                    
             f = {}
             f['success'] = 1
             f['face_Tx'] = face_trans[0]
@@ -287,47 +299,6 @@ def main():
                                 fd['face_Tx'],fd['face_Ty'],fd['face_Tz'], \
                                 fd['yaw'],fd['roll'],fd['pitch'],fd['ZZ_X'],fd['ZZ_Y'],fd['ZZ_Z']))
             nfound += 1
-        #f.write('#Face is found %d frames / %d frames.'%(nfound,n))
-    
-    """
-    # for web visualization
-    NSMPL = 200
-    STEP = (len(facedata)+1)/NSMPL
-
-    with open(sys.argv[1] + '-face_dist.csv', 'w') as f:
-        for k in facedata.keys():
-            if int(k)%STEP >= 0.0 and int(k)%STEP < 1.0:
-                if facedata[k]['success'] == 0:
-                    f.write('0.0\n')
-                else:
-                    f.write('%f\n'%(facedata[k]['pose_Tz']))
-
-    with open(sys.argv[1] + '-face_rx.csv', 'w') as f:
-        for k in facedata.keys():
-            if int(k)%STEP >= 0.0 and int(k)%STEP < 1.0:
-                if facedata[k]['success'] == 0:
-                    f.write('0.0\n')
-                else:
-                    f.write('%f\n'%(facedata[k]['pose_Rx']))
-
-    with open(sys.argv[1] + '-face_ry.csv', 'w') as f:
-        for k in facedata.keys():
-            if int(k)%STEP >= 0.0 and int(k)%STEP < 1.0:
-                if facedata[k]['success'] == 0:
-                    f.write('0.0\n')
-                else:
-                    f.write('%f\n'%(facedata[k]['pose_Ry']))
-
-    with open(sys.argv[1] + '-face_rz.csv', 'w') as f:
-        for k in facedata.keys():
-            if int(k)%STEP >= 0.0 and int(k)%STEP < 1.0:
-                if facedata[k]['success'] == 0:
-                    f.write('0.0\n')
-                else:
-                    f.write('%f\n'%(facedata[k]['pose_Rz']))
-    """
-    
-    #print('Face is found %d frames / %d frames.'%(nfound,n))    
 
     cap.release()
     vout.release()

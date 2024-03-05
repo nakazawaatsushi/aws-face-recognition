@@ -6,4 +6,5 @@ ivr/
 *.tsv
 *.xls
 *.xlsx
+*.pdf
 .ipynb_checkpoints/
